@@ -1,0 +1,55 @@
+repos:
+- repo: local
+  hooks:
+  - id: add-trailing-comma
+    name: Add trailing comma
+    description: "Automatically add trailing commas to Python code"
+    entry: add-trailing-comma
+    language: python
+    types: [python]
+    additional_dependencies: [add-trailing-comma==3.1.0]
+
+  - id: end-of-file-fixer
+    name: End-of-file fixer
+    entry: end-of-file-fixer
+    language: python
+    types: [python]
+    additional_dependencies: [pre-commit-hooks]
+
+  - id: ruff
+    name: ruff
+    description: "Run 'ruff' for extremely fast Python linting"
+    entry: ruff check --force-exclude
+    language: python
+    types_or: [python, pyi, jupyter]
+    args: [--fix]
+    require_serial: true
+    additional_dependencies: []
+
+  - id: ruff-format
+    name: ruff-format
+    description: "Run 'ruff format' for extremely fast Python formatting"
+    entry: ruff format --force-exclude
+    language: python
+    types_or: [python, pyi, jupyter]
+    args: []
+    require_serial: true
+    additional_dependencies: []
+
+  - id: mypy
+    name: mypy
+    entry: mypy
+    language: system
+    args: [
+      --strict,
+      --ignore-missing-imports
+      ]
+    require_serial: true
+    types: [ python ]
+
+  - id: trailing-whitespace
+    name: Trailing whitespace fixer
+    entry: trailing-whitespace-fixer
+    language: python
+    types: [python]
+    additional_dependencies: [pre-commit-hooks]
