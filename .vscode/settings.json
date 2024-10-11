@@ -1,0 +1,8 @@
+{
+    "editor.formatOnSave": true,
+    "html.format.wrapLineLength": 0,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features"
+    }
+}
