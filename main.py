@@ -2,6 +2,7 @@
 
 import functools
 import io
+import itertools
 import json
 import re
 from typing import Annotated, Any, Hashable
@@ -19,7 +20,7 @@ import selenium.webdriver.firefox.service
 import selenium.webdriver.remote.webdriver
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.wait
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, element
 from loguru import logger
 
 driver_get_timeout_duration: float = 10.0
@@ -233,6 +234,18 @@ class Principle(pydantic.BaseModel):
             )
 
         return pcfs
+    def extract_pcf_table(table: element.Tag) -> pandas.DataFrame:
+        rows = table.find_all("tr")
+        if rows != 3:
+            # TODO: expect three rows always
+            raise Exception
+        df = pandas.read_html(rows[0:1])
+
+        tds = rows[2].find_all("td")
+        ps = [td.find_all('p') for td in tds]
+        records = itertools.zip_longest(ps)
+        df.a
+        return df
 
     @pydantic.field_serializer("pcfs")
     def serialize_pcfs(
