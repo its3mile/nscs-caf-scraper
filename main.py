@@ -4,7 +4,7 @@ import functools
 import io
 import json
 import re
-from typing import Annotated
+from typing import Annotated, Any, Hashable
 
 import httpx
 import jsbeautifier
@@ -235,8 +235,11 @@ class Principle(pydantic.BaseModel):
         return pcfs
 
     @pydantic.field_serializer("pcfs")
-    def serialize_pcfs(self, pcfs: list[tuple[str, list[str], pandas.DataFrame]]) -> list[tuple[str, list[str], str]]:
-        return [(pcf[0], pcf[1], pcf[2].to_json()) for pcf in pcfs]
+    def serialize_pcfs(
+        self,
+        pcfs: list[tuple[str, list[str], pandas.DataFrame]],
+    ) -> list[tuple[str, list[str], dict[Hashable, Any]]]:
+        return [(pcf[0], pcf[1], pcf[2].to_dict()) for pcf in pcfs]
 
 
 class Objective(pydantic.BaseModel):
