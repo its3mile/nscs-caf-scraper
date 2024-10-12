@@ -1,7 +1,7 @@
 # mypy: disable-error-code="prop-decorator"
 
 import functools
-import io
+import itertools
 import json
 import re
 from typing import Annotated, Any, Hashable
@@ -19,7 +19,7 @@ import selenium.webdriver.firefox.service
 import selenium.webdriver.remote.webdriver
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.wait
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, element
 from loguru import logger
 
 driver_get_timeout_duration: float = 10.0
@@ -225,14 +225,48 @@ class Principle(pydantic.BaseModel):
             else:
                 pcf_details = [pcf_detail_tag.text for pcf_detail_tag in pcf_detail_tags]
 
-            pcf_string_io = io.StringIO(pcf_tag.prettify())
-            pcf_table_dfs = pandas.read_html(pcf_string_io, flavor="bs4")
-            pcf_table_df = pcf_table_dfs[0]
+            pcf_table_df = self.extract_pcf_table(pcf_tag.find("table"))
             pcfs.append(
                 (pcf_heading, pcf_details, pcf_table_df),
             )
 
         return pcfs
+
+    def extract_pcf_table(self, table_tag: element.Tag) -> pandas.DataFrame:
+        tr_tags = table_tag.find_all("tr")
+
+        # tables are currently presented with three rows
+        # to somewhat future-proof, throw an exception if this changes
+        if len(tr_tags) != 3:
+            raise NotImplementedError("Extraction only support three row pcf tables.")
+
+        # column headers
+        # this is expected to be:
+        #   'achieved' &
+        #   'not achieved'
+        columns = [th_tag.text for th_tag in tr_tags[0].find_all("th")]
+
+        # 2D list/table
+        table: list[tuple[str, ...]] = []
+
+        # column subheaders
+        # this is expected to be:
+        #   'At least one of the following statements is true' &
+        #   'All the following statements are true'
+        table.append(tuple(str(td_tag.text) for td_tag in tr_tags[1].find_all("td")))
+
+        # controls of a single column are grouped in a single td tag, separated individually by p tags
+        td_tags = tr_tags[-1].find_all("td")
+        p_tags = [[p_tag.text for p_tag in td_tag.find_all("p")] for td_tag in td_tags]
+        table.extend(itertools.zip_longest(*p_tags))
+
+        # convert to dataframe
+        df = pandas.DataFrame(
+            table,
+            columns=columns,
+        )
+
+        return df
 
     @pydantic.field_serializer("pcfs")
     def serialize_pcfs(
