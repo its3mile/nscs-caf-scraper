@@ -121,7 +121,7 @@ class Principle(pydantic.BaseModel):
         if tag is None:
             logger.warning(f"Unable to determine heading for {self.link}")
             return "error determining heading"
-        return tag.text
+        return tag.get_text(strip=True)
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -141,7 +141,7 @@ class Principle(pydantic.BaseModel):
             logger.warning(f"Unable to determine principle for {self.link}")
             return ["error determining principle"]
 
-        return [p_tag.text for p_tag in p_tags]
+        return [p_tag.get_text(strip=True) for p_tag in p_tags]
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -164,7 +164,7 @@ class Principle(pydantic.BaseModel):
             logger.warning(f"Unable to determine description for {self.link}")
             return ["error determining description"]
 
-        return [p_tag.text for p_tag in p_tags]
+        return [p_tag.get_text(strip=True) for p_tag in p_tags]
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -184,7 +184,7 @@ class Principle(pydantic.BaseModel):
             logger.warning(f"Unable to determine guidance for {self.link}")
             return ["error determining guidance"]
 
-        return [p_tag.text for p_tag in p_tags]
+        return [p_tag.get_text(strip=True) for p_tag in p_tags]
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -216,14 +216,14 @@ class Principle(pydantic.BaseModel):
                 logger.warning(f"Unable to determine guidance for {self.link}")
                 pcf_heading = "error determining pcf heading"
             else:
-                pcf_heading = pcf_heading_tag.text
+                pcf_heading = pcf_heading_tag.get_text(strip=True)
 
             pcf_detail_tags = pcf_tag.find_all("em")
             if not pcf_detail_tags:
                 logger.warning(f"Unable to determine pcf details for {self.link}")
                 pcf_details = ["error determining guidance"]
             else:
-                pcf_details = [pcf_detail_tag.text for pcf_detail_tag in pcf_detail_tags]
+                pcf_details = [pcf_detail_tag.get_text(strip=True) for pcf_detail_tag in pcf_detail_tags]
 
             pcf_table_df = self.extract_pcf_table(pcf_tag.find("table"))
             pcfs.append(
@@ -244,7 +244,7 @@ class Principle(pydantic.BaseModel):
         # this is expected to be:
         #   'achieved' &
         #   'not achieved'
-        columns = [th_tag.text for th_tag in tr_tags[0].find_all("th")]
+        columns = [th_tag.get_text(strip=True) for th_tag in tr_tags[0].find_all("th")]
 
         # 2D list/table
         table: list[tuple[str, ...]] = []
@@ -253,12 +253,12 @@ class Principle(pydantic.BaseModel):
         # this is expected to be:
         #   'At least one of the following statements is true' &
         #   'All the following statements are true'
-        table.append(tuple(str(td_tag.text) for td_tag in tr_tags[1].find_all("td")))
+        table.append(tuple(td_tag.get_text(strip=True) for td_tag in tr_tags[1].find_all("td")))
 
         # controls of a single column are grouped in a single td tag, separated individually by p tags
         td_tags = tr_tags[-1].find_all("td")
-        p_tags = [[p_tag.text for p_tag in td_tag.find_all("p")] for td_tag in td_tags]
-        table.extend(itertools.zip_longest(*p_tags))
+        p_texts = [[p_tag.get_text(strip=True) for p_tag in td_tag.find_all("p")] for td_tag in td_tags]
+        table.extend(itertools.zip_longest(*p_texts))
 
         # convert to dataframe
         df = pandas.DataFrame(
@@ -339,16 +339,24 @@ def main() -> None:
         objective = Objective(link=objective_link)
         objectives.append(objective)
 
-    with open("output.json", "w") as fd:
+    with open("output.json", "w", encoding="utf-8") as fd:
         # This is preferred over model_dump_json() as it allows for the output str to be formatted for readability,
         # while still allowing pydantic to do the serialisation
         objective_models = [objective.model_dump() for objective in objectives]
         opts = jsbeautifier.default_options()
         opts.indent_size = 2
-        objectives_json = jsbeautifier.beautify(
+        opts.space_in_empty_paren = True
+        objectives_json: str = jsbeautifier.beautify(
             json.dumps(objective_models),
             opts,
         )
+        unicode_replacements = {
+            r"\u202f": " ",  # narror space -> regular space
+            r"\u2019": "'",  # right single quotation mark -> apostrophe
+        }
+        unicode_replacements = {re.escape(k): v for k, v in unicode_replacements.items()}
+        pattern = re.compile("|".join(unicode_replacements.keys()))
+        objectives_json = pattern.sub(lambda m: unicode_replacements[re.escape(m.group(0))], objectives_json)
         fd.write(objectives_json)
 
 
