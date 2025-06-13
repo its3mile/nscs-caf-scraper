@@ -121,7 +121,7 @@ class Principle(pydantic.BaseModel):
     @pydantic.computed_field()
     @functools.cached_property
     def heading(self) -> str:
-        tag = self._content.find("h1", attrs={"class": "subHeading"})
+        tag = self._content.find("h2", attrs={"class": "subHeading"})
         if tag is None:
             logger.warning(f"Unable to determine heading for {self.link}")
             return "error determining heading"
@@ -319,7 +319,7 @@ class Objective(pydantic.BaseModel):
     @pydantic.computed_field()
     @functools.cached_property
     def heading(self) -> str:
-        tag = self._content.find("h1", attrs={"class": "subHeading"})
+        tag = self._content.find("h2", attrs={"class": "subHeading"})
         if tag is None:
             logger.warning(f"Unable to determine heading for {self.link}")
             return "error determining heading"
