@@ -1,14 +1,18 @@
 # mypy: disable-error-code="prop-decorator"
 
+import argparse
 import functools
 import itertools
 import json
 import re
-from typing import Annotated, Any, Hashable
+from collections.abc import Hashable
+from http import HTTPStatus
+from pathlib import Path
+from typing import Annotated, Any
 
 import httpx
 import jsbeautifier
-import pandas
+import pandas as pd
 import pydantic
 import selenium
 import selenium.common.exceptions
@@ -29,8 +33,8 @@ def get_caf_objective_links(base: httpx.URL) -> list[httpx.URL]:
     logger.info(f"Getting CAF Objective links from {base}")
 
     response = httpx.get(base)
-    if response.status_code == 404:
-        logger.error(f"URL {base} returned a 404 response code, so will not be parsed.")
+    if response.status_code == HTTPStatus.NOT_FOUND:
+        logger.error(f"URL {base} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
         return []
 
     driver.get(str(base))
@@ -57,8 +61,8 @@ def get_caf_principle_links(objective: httpx.URL) -> list[httpx.URL]:
     logger.info(f"Getting CAF Objective Principle links from {objective}")
 
     response = httpx.get(objective)
-    if response.status_code == 404:
-        logger.error(f"URL {objective} returned a 404 response code, so will not be parsed.")
+    if response.status_code == HTTPStatus.NOT_FOUND:
+        logger.error(f"URL {objective} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
         return []
 
     driver.get(str(objective))
@@ -92,8 +96,8 @@ class Principle(pydantic.BaseModel):
     @pydantic.computed_field(alias="soup", repr=False)
     @functools.cached_property
     def _content(self) -> BeautifulSoup:
-        if httpx.get(self.link).status_code == 404:
-            logger.error(f"URL {self.link} returned a 404 response code, so will not be parsed.")
+        if httpx.get(self.link).status_code == HTTPStatus.NOT_FOUND:
+            logger.error(f"URL {self.link} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
             return BeautifulSoup()
 
         driver.get(str(self.link))
@@ -188,7 +192,7 @@ class Principle(pydantic.BaseModel):
 
     @pydantic.computed_field()
     @functools.cached_property
-    def pcfs(self) -> list[tuple[str, list[str], pandas.DataFrame]]:
+    def pcfs(self) -> list[tuple[str, list[str], pd.DataFrame]]:
         pcf_tags = self._content.find_all(
             "div",
             attrs={
@@ -232,13 +236,15 @@ class Principle(pydantic.BaseModel):
 
         return pcfs
 
-    def extract_pcf_table(self, table_tag: element.Tag) -> pandas.DataFrame:
+    def extract_pcf_table(self, table_tag: element.Tag) -> pd.DataFrame:
         tr_tags = table_tag.find_all("tr")
 
         # tables are currently presented with three rows
         # to somewhat future-proof, throw an exception if this changes
-        if len(tr_tags) != 3:
-            raise NotImplementedError("Extraction only support three row pcf tables.")
+        expected_num_rows = 3
+        if len(tr_tags) != expected_num_rows:
+            msg = "Extraction only support three row pcf tables."
+            raise NotImplementedError(msg)
 
         # column headers
         # this is expected to be:
@@ -261,7 +267,7 @@ class Principle(pydantic.BaseModel):
         table.extend(itertools.zip_longest(*p_texts))
 
         # convert to dataframe
-        df = pandas.DataFrame(
+        df = pd.DataFrame(
             table,
             columns=columns,
         )
@@ -271,7 +277,7 @@ class Principle(pydantic.BaseModel):
     @pydantic.field_serializer("pcfs")
     def serialize_pcfs(
         self,
-        pcfs: list[tuple[str, list[str], pandas.DataFrame]],
+        pcfs: list[tuple[str, list[str], pd.DataFrame]],
     ) -> list[tuple[str, list[str], dict[Hashable, Any]]]:
         return [(pcf[0], pcf[1], pcf[2].to_dict()) for pcf in pcfs]
 
@@ -288,8 +294,8 @@ class Objective(pydantic.BaseModel):
     @pydantic.computed_field(alias="soup", repr=False)
     @functools.cached_property
     def _content(self) -> BeautifulSoup:
-        if httpx.get(self.link).status_code == 404:
-            logger.error(f"URL {self.link} returned a 404 response code, so will not be parsed.")
+        if httpx.get(self.link).status_code == HTTPStatus.NOT_FOUND:
+            logger.error(f"URL {self.link} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
             return BeautifulSoup()
 
         driver.get(str(self.link))
@@ -325,7 +331,7 @@ class Objective(pydantic.BaseModel):
         return [Principle(link=link) for link in get_caf_principle_links(self.link)]
 
 
-def main() -> None:
+def main(output_json_file: Path) -> None:
     ncsc_caf_homepage_link = httpx.URL(
         "https://www.ncsc.gov.uk/collection/cyber-assessment-framework",
     )
@@ -339,7 +345,7 @@ def main() -> None:
         objective = Objective(link=objective_link)
         objectives.append(objective)
 
-    with open("output.json", "w", encoding="utf-8") as fd:
+    with Path.open(output_json_file, "w", encoding="utf-8") as fd:
         # This is preferred over model_dump_json() as it allows for the output str to be formatted for readability,
         # while still allowing pydantic to do the serialisation
         objective_models = [objective.model_dump() for objective in objectives]
@@ -361,7 +367,20 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Scrape the NCSC CAF site, and extract the relevant information, presenting it as a structured JSON document.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="""The output file name without an extension (stem).
+                        This is used to produce an <output>.json and an <output>.log.
+                        Defaults to 'output'.""",
+        default="output",
+    )
+    args = parser.parse_args()
     try:
+        logger.add(Path(args.output + ".log"))
         options = selenium.webdriver.firefox.options.Options()
         options.binary_location = r"/usr/bin/firefox-esr"
         options.add_argument("--headless")
@@ -372,7 +391,7 @@ if __name__ == "__main__":
         logger.info("Opening Webdriver session")
         driver = selenium.webdriver.Firefox(options=options, service=service)
         driver.implicitly_wait(10.0)
-        main()
+        main(Path(args.output + ".json"))
     except Exception as exc:
         logger.error(exc)
         raise

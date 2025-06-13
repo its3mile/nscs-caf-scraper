@@ -8,21 +8,35 @@
 	},
 	"postCreateCommand": "chmod +x .devcontainer/post-create-command.sh && .devcontainer/post-create-command.sh",
 	"features": {
-		"ghcr.io/devcontainers/features/common-utils:2": {
-			"installZsh": true,
-			"configureZshAsDefaultShell": true,
-			"installOhMyZsh": true,
-			"installOhMyZshConfig": true
-		}
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": "true",
+            "configureZshAsDefaultShell": "true",
+            "installOhMyZsh": "true",
+            "installOhMyZshConfig": "true",
+            "username": "vscode",
+            "userUid": "1000",
+            "userGid": "1000",
+            "upgradePackages": "true"
+        },
+        "ghcr.io/devcontainers/features/python:1": {
+            "installTools": "true",
+            "toolsToInstall": "uv,ruff,mypy,MonkeyType,bandit"
+        },
 	},	
 	"customizations": {
 		"vscode": {
+			"settings": {
+                "python.pythonPath": "${workspaceFolder}/.venv/bin/python"
+            },
 			"extensions": [
 				"ms-python.python",
+				"ms-python.debugpy",
+                "ms-python.vscode-pylance",
+                "ms-python.isort",
 				"njpwerner.autodocstring",
 				"charliermarsh.ruff"
 			]
 		}
 	},
-	"remoteUser": "root"
+    "remoteUser": "vscode"
 }

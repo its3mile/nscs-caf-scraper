@@ -4,16 +4,14 @@
 # This script executes once the dev container is created from the build image, in the container
 #
 
-# Echo poetry version.
-poetry --version
+# Echo uv version.
+uv --version
 
-# Disable poetry virtualenv - as it is running in a devcontainer already.
-poetry config virtualenvs.create false
+# Create/sync development environment
+echo "Create/sync development environment"
+uv sync
 
-# Install project dependencies.
-echo "Installing project dependencies."
-poetry install
-
-# Install pre-commit hooks
+# Install Git pre-commit hooks
 echo "Installing Git pre-commit hooks."
+uv tool install pre-commit
 pre-commit install

@@ -25,11 +25,6 @@ RUN DEBIAN_FRONTEND=noninteractive \
     binfmt-support \
     qemu-user-static
 
-# Install Poetry.
-ENV POETRY_HOME="/etc/poetry"
-RUN curl -sSL https://install.python-poetry.org | POETRY_HOME=$POETRY_HOME python3
-ENV PATH="$PATH:$POETRY_HOME/bin"
-
 RUN wget https://github.com/mozilla/geckodriver/releases/download/v0.35.0/geckodriver-v0.35.0-linux64.tar.gz \
     && tar -xzvf geckodriver-v0.35.0-linux64.tar.gz \
     && mv geckodriver /usr/local/bin/geckodriver \

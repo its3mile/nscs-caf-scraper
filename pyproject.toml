@@ -1,4 +1,4 @@
-[tool.poetry]
+[project]
 name = "ncsc-caf-scraper"
 version = "0.1.0"
 description = ""
@@ -6,29 +6,18 @@ authors = ["Daintta Ltd", "Emile Boutany <emile.boutany@daintta.com>"]
 readme = "README.md"
 package-mode = false
 
-[tool.poetry.dependencies]
-python = "^3.12"
-beautifulsoup4 = "^4.12.3"
-types-beautifulsoup4 = "^4.12.0.20240907"
-httpx = "^0.27.2"
-selenium = "^4.25.0"
-pydantic = "^2.9.2"
-loguru = "^0.7.2"
-jsbeautifier = "^1.15.1"
-pandas = {extras = ["html", "output-formatting"], version = "^2.2.3"}
-pandas-stubs = "^2.2.3.241009"
-
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^4.0.0"
-pytest = "^8.3.3"
-pytest-cov = "^5.0.0"
-pytest-check = "^2.4.1"
-mypy = "^1.11.2"
-ruff = "^0.6.9"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.13.4",
+    "httpx>=0.28.1",
+    "jsbeautifier>=1.15.4",
+    "loguru>=0.7.3",
+    "pandas[html,output-formatting]>=2.3.0",
+    "pandas-stubs>=2.2.3.250527",
+    "pydantic>=2.11.6",
+    "selenium>=4.33.0",
+    "types-beautifulsoup4>=4.12.0.20250516",
+]
 
 [tool.pytest.ini_options]
 log_level = "INFO"
@@ -37,10 +26,23 @@ log_date_format = "%Y-%m-%d %H:%M:%S"
 addopts = "-ra -q -v --cov=. --cov-report html"
 
 [tool.ruff]
+exclude = [
+    "__pycache__",
+]
 target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["B", "C" ,"E" ,"F" ,"W"]
+select = ["ALL"]
 extend-select = ["I"]
-ignore = ["B008", "E203", "E266", "E501"]
+ignore = ["B008", "E203", "E266", "E501", "PD901", "D", "RET504"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.16.0",
+    "pre-commit>=4.2.0",
+    "pytest>=8.4.0",
+    "pytest-check>=2.5.3",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.11.13",
+]

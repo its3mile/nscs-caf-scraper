@@ -5,12 +5,23 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Python Debugger: ncsc-caf-scraper",
             "type": "debugpy",
             "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
-            "env": {"PYDEVD_DISABLE_FILE_VALIDATION": "1"}
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
         }
     ]
 }

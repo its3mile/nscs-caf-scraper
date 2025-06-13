@@ -42,7 +42,9 @@ repos:
     language: system
     args: [
       --strict,
-      --ignore-missing-imports
+      --ignore-missing-imports,
+      "--python-executable",
+      ".venv/bin/python"
       ]
     require_serial: true
     types: [ python ]
