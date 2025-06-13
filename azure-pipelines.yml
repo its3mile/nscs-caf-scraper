@@ -1,0 +1,59 @@
+trigger: none
+
+pool:
+  vmImage: "ubuntu-latest"
+
+parameters:
+  - name: outputFileStem
+    type: string
+    default: "output"
+
+variables:
+  mount: "/workspace"
+
+stages:
+  - stage: BuildAndPublishStage
+    jobs:
+      - job: BuildAndPublishJob
+        steps:
+          # Build Docker Image (devcontainer)
+          - script: |
+              params=(
+                build
+                --tag $(Build.Repository.Name):$(Build.BuildId)
+                --file .devcontainer/Dockerfile
+                --build-arg BASE_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+                .
+              )
+              docker "${params[@]}"
+            displayName: "Build container"
+
+          # Run Python Script In Docker Image
+          # N.B., Dependencies Must Be Installed As Part Of The Run As This Is Not Handled As Part Of Build
+          - script: |
+              params=(
+                run
+                --rm
+                --mount type=bind,src=.,dst=$(mount)
+                --workdir $(mount)
+                $(Build.Repository.Name):$(Build.BuildId)
+                /usr/bin/bash -c 'uv run --no-dev main.py --output "${{ parameters.outputFileStem }}"'
+              )
+              docker "${params[@]}"
+            displayName: "Run Python script inside container"
+
+          # Copy Generated Output Files To Staging Directory, Ready For Publishing
+          - task: CopyFiles@2
+            displayName: "Prepare outputs for publishing"
+            inputs:
+              Contents: |
+                ${{ format('{0}.json', parameters.outputFileStem) }}
+                ${{ format('{0}.log', parameters.outputFileStem) }}
+              TargetFolder: "$(Build.ArtifactStagingDirectory)"
+
+          # Publish The Outputs To The Pipeline
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish outputs"
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)"
+              artifact: "NCSC CAF Scraper Output"

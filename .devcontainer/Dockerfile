@@ -1,4 +1,5 @@
-FROM mcr.microsoft.com/devcontainers/python:3.12
+ARG BASE_IMAGE=mcr.microsoft.com/devcontainers/python:3.12
+FROM $BASE_IMAGE
 
 RUN DEBIAN_FRONTEND=noninteractive \
     && apt-get update \ 
