@@ -222,12 +222,13 @@ class Principle(pydantic.BaseModel):
             else:
                 pcf_heading = pcf_heading_tag.get_text(strip=True)
 
-            pcf_detail_tags = pcf_tag.find_all("em")
-            if not pcf_detail_tags:
+            if (pcf_detail_tags := pcf_tag.find_all("em")) or (
+                (pcf_heading_tag is not None) and (pcf_detail_tags := pcf_heading_tag.find_next("p"))
+            ):
+                pcf_details = [pcf_detail_tag.get_text(strip=True) for pcf_detail_tag in pcf_detail_tags]
+            else:
                 logger.warning(f"Unable to determine pcf details for {self.link}")
                 pcf_details = ["error determining guidance"]
-            else:
-                pcf_details = [pcf_detail_tag.get_text(strip=True) for pcf_detail_tag in pcf_detail_tags]
 
             pcf_table_df = self.extract_pcf_table(pcf_tag.find("table"))
             pcfs.append(
