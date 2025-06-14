@@ -4,6 +4,7 @@ import argparse
 import functools
 import itertools
 import json
+import operator
 import re
 from collections.abc import Hashable
 from http import HTTPStatus
@@ -178,17 +179,25 @@ class Principle(pydantic.BaseModel):
             logger.warning(f"Unable to determine guidance for {self.link}")
             return ["error determining guidance"]
 
-        h2_tag_parent = h2_tag.parent
-        if h2_tag_parent is None:
+        guidance_article_find_args = {"name": "div", "attrs": {"class": "pcf-article-content-item"}}
+        guidance_article = h2_tag.find_previous(**guidance_article_find_args)
+        if guidance_article is None:
             logger.warning(f"Unable to determine guidance for {self.link}")
             return ["error determining guidance"]
 
-        p_tags = h2_tag_parent.find_all("p")
+        guidance_articles = [guidance_article]
+        next_guidance_article = guidance_article.find_next(**guidance_article_find_args)
+        while (next_guidance_article is not None) and (not next_guidance_article.find("table")):
+            guidance_articles.append(next_guidance_article)
+            next_guidance_article = next_guidance_article.find_next(**guidance_article_find_args)
+
+        p_tags = [guidance_article.find_all("p") for guidance_article in guidance_articles]  # type: ignore [union-attr]
+        p_tags = functools.reduce(operator.iconcat, p_tags, [])
         if not p_tags:
             logger.warning(f"Unable to determine guidance for {self.link}")
             return ["error determining guidance"]
 
-        return [p_tag.get_text(strip=True) for p_tag in p_tags]
+        return list(filter(None, [p_tag.get_text(strip=True) for p_tag in p_tags]))  # type: ignore [union-attr]
 
     @pydantic.computed_field()
     @functools.cached_property
