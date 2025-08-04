@@ -34,13 +34,14 @@ jobs:
         OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
         mv output.log $OUTPUT_LOG
         echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
-        
+      id: set_outputs
+
     - uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.OUTPUT_JSON }}
-        path: ${{ env.OUTPUT_JSON }}
-        
+        name: ${{ steps.set_outputs.outputs.output_json }}
+        path: ${{ steps.set_outputs.outputs.output_json }}
+
     - uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.OUTPUT_LOG }}
-        path: ${{ env.OUTPUT_LOG }}
+        name: ${{ steps.set_outputs.outputs.output_log }}
+        path: ${{ steps.set_outputs.outputs.output_log }}
