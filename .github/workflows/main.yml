@@ -13,12 +13,25 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4.2.2
+      
     - name: Dev Container Build and Run Action
       uses: devcontainers/ci@v0.3
       with:
         imageName: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
         cacheFrom: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
-        push: always
+        push: never
         runCmd: 
             .venv/bin/python main.py
-
+            
+    - run: '[ -f output.json ]'
+    
+    - run: |
+        DATETIME=$(date +"%FT%T")
+        OUTPUT_FILENAME="NCSC-CAF-${DATETIME}.json"
+        mv output.json $OUTPUT_FILENAME
+        echo $OUTPUT_FILENAME >> $GITHUB_OUTPUT
+        
+    - uses: actions/upload-artifact@v4
+      with:
+        name: $OUTPUT_FILENAME
+        path: $OUTPUT_FILENAME
