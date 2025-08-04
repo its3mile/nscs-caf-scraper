@@ -1,0 +1,8 @@
+- name: Dev Container Build and Run Action
+  uses: devcontainers/ci@v0.3.19000003
+  with:
+  imageName: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
+  cacheFrom: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
+  push: always
+  runCmd: 
+      .venv/bin/python main.py
