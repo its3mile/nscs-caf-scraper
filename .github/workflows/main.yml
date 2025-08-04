@@ -23,7 +23,8 @@ jobs:
         runCmd: 
             .venv/bin/python main.py
             
-    - run: '[ -f output.json && -f output.log]' 
+    - run: '[ -f output.json ]' 
+    - run: '[ -f output.log ]' 
     
     - run: |
         ls -al # debug
