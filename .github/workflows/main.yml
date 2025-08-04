@@ -26,7 +26,7 @@ jobs:
     - run: '[ -f output.json ]'
     
     - run: |
-        DATETIME=$(date +"%FT%T")
+        DATETIME=$(date +"%FT%H%M%S")
         OUTPUT_FILENAME="NCSC-CAF-${DATETIME}.json"
         mv output.json $OUTPUT_FILENAME
         echo $OUTPUT_FILENAME >> $GITHUB_OUTPUT
