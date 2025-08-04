@@ -23,15 +23,26 @@ jobs:
         runCmd: 
             .venv/bin/python main.py
             
-    - run: '[ -f output.json ]'
+    - run: '[[ -f output.json && -f output.log]]' 
     
     - run: |
+        ls -al # debug
         DATETIME=$(date +"%FT%H%M%S")
-        OUTPUT_FILENAME="NCSC-CAF-${DATETIME}.json"
-        mv output.json $OUTPUT_FILENAME
-        echo $OUTPUT_FILENAME >> $GITHUB_OUTPUT
+        
+        OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
+        mv output.json $OUTPUT_JSON
+        echo $OUTPUT_JSON >> $GITHUB_OUTPUT
+        
+        OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
+        mv output.log $OUTPUT_LOG
+        echo $OUTPUT_LOG >> $GITHUB_OUTPUT
         
     - uses: actions/upload-artifact@v4
       with:
-        name: $OUTPUT_FILENAME
-        path: $OUTPUT_FILENAME
+        name: $OUTPUT_JSON
+        path: $OUTPUT_JSON
+        
+    - uses: actions/upload-artifact@v4
+      with:
+        name: $OUTPUT_LOG
+        path: $OUTPUT_LOG
