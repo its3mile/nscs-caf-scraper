@@ -32,11 +32,11 @@ jobs:
         
         OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
         mv output.json $OUTPUT_JSON
-        echo $OUTPUT_JSON >> $GITHUB_OUTPUT
+        echo "OUTPUT_JSON=$OUTPUT_JSON" >> $GITHUB_OUTPUT
         
         OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
         mv output.log $OUTPUT_LOG
-        echo $OUTPUT_LOG >> $GITHUB_OUTPUT
+        echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
         
     - uses: actions/upload-artifact@v4
       with:
