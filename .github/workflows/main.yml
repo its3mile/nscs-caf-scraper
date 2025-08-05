@@ -53,5 +53,5 @@ jobs:
       with:
         tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
         files: |
-          {{ steps.set_outputs.outputs.output_json }}
-          {{ steps.set_outputs.outputs.output_log }}
+          ${{ steps.set_outputs.outputs.output_json }}
+          ${{ steps.set_outputs.outputs.output_log }}
