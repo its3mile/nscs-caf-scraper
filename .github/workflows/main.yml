@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron:  '0 2 * * *'
+  push:
+    branches: [ "main", "feat/github-actions" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.2.2
+      
+    - name: Dev Container Build and Run
+      uses: devcontainers/ci@v0.3
+      with:
+        imageName: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
+        cacheFrom: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
+        push: never
+        runCmd: 
+            .venv/bin/python main.py
+            
+    - run: '[ -f output.json ]' 
+    - run: '[ -f output.log ]' 
+    
+    - run: |
+        DATETIME=$(date +"%FT%H%M%S")
+        OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
+        mv output.json $OUTPUT_JSON
+        echo "OUTPUT_JSON=$OUTPUT_JSON" >> $GITHUB_OUTPUT
+        OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
+        mv output.log $OUTPUT_LOG
+        echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
+      id: set_outputs
+
+    - name: Upload Json
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.set_outputs.outputs.output_json }}
+        path: ${{ steps.set_outputs.outputs.output_json }}
+        
+    - name: Upload Log
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.set_outputs.outputs.output_log }}
+        path: ${{ steps.set_outputs.outputs.output_log }}
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
+        files: |
+          ${{ steps.set_outputs.outputs.output_json }}
+          ${{ steps.set_outputs.outputs.output_log }}
