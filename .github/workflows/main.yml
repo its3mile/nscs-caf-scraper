@@ -14,7 +14,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4.2.2
       
-    - name: Dev Container Build and Run Action
+    - name: Dev Container Build and Run
       uses: devcontainers/ci@v0.3
       with:
         imageName: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
@@ -36,12 +36,21 @@ jobs:
         echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
       id: set_outputs
 
-    - uses: actions/upload-artifact@v4
+    - name: Upload Json
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.set_outputs.outputs.output_json }}
         path: ${{ steps.set_outputs.outputs.output_json }}
-
-    - uses: actions/upload-artifact@v4
+        
+    - name: Upload Log
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.set_outputs.outputs.output_log }}
         path: ${{ steps.set_outputs.outputs.output_log }}
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          {{ steps.set_outputs.outputs.output_json }}
+          {{ steps.set_outputs.outputs.output_log }}
