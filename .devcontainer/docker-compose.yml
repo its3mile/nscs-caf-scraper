@@ -1,8 +1,6 @@
 services:
   dev:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+    image: mcr.microsoft.com/playwright/python:v1.58.0-noble
     volumes:
       - ..:/workspace:cached
       - $HOME/.ssh/:/home/vscode/.ssh/

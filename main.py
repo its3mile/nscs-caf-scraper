@@ -2,334 +2,248 @@
 
 import argparse
 import functools
-import itertools
-import json
 import operator
 import re
-from collections.abc import Hashable
 from http import HTTPStatus
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
-import httpx
-import jsbeautifier
-import pandas as pd
 import pydantic
-import selenium
-import selenium.common.exceptions
-import selenium.webdriver.common
-import selenium.webdriver.common.by
-import selenium.webdriver.firefox.options
-import selenium.webdriver.firefox.service
-import selenium.webdriver.remote.webdriver
-import selenium.webdriver.support.expected_conditions
-import selenium.webdriver.support.wait
-from bs4 import BeautifulSoup, element
 from loguru import logger
-
-driver_get_timeout_duration: float = 10.0
-
-
-def get_caf_objective_links(base: httpx.URL) -> list[httpx.URL]:
-    logger.info(f"Getting CAF Objective links from {base}")
-
-    response = httpx.get(base)
-    if response.status_code == HTTPStatus.NOT_FOUND:
-        logger.error(f"URL {base} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
-        return []
-
-    driver.get(str(base))
-
-    try:
-        selenium.webdriver.support.wait.WebDriverWait(driver, driver_get_timeout_duration).until(
-            selenium.webdriver.support.expected_conditions.visibility_of_element_located(
-                (selenium.webdriver.common.by.By.CSS_SELECTOR, "a[href*='objective']"),
-            ),
-        )
-    except selenium.common.exceptions.TimeoutException:
-        logger.error(f"Timeout on element based page source get for {base}. Page source may be incomplete.")
-
-    page = driver.page_source
-    soup = BeautifulSoup(page, "html.parser")
-    a_tags = soup.find_all("a", href=True)
-    objective_links = [base.join(link.attrs.get("href")) for link in a_tags if "objective" in link.get("href")]
-    objective_links.sort(key=lambda x: str(x.raw_path))
-    logger.info(f"Got CAF Objective links: {objective_links}")
-    return objective_links
+from scrapling.fetchers import StealthyFetcher
+from scrapling.parser import Selector
 
 
-def get_caf_principle_links(objective: httpx.URL) -> list[httpx.URL]:
-    logger.info(f"Getting CAF Objective Principle links from {objective}")
+class ContributingOutcome(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
-    response = httpx.get(objective)
-    if response.status_code == HTTPStatus.NOT_FOUND:
-        logger.error(f"URL {objective} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
-        return []
-
-    driver.get(str(objective))
-    try:
-        selenium.webdriver.support.wait.WebDriverWait(driver, driver_get_timeout_duration).until(
-            selenium.webdriver.support.expected_conditions.visibility_of_element_located(
-                (selenium.webdriver.common.by.By.CSS_SELECTOR, "a[href*='principle']"),
-            ),
-        )
-    except selenium.common.exceptions.TimeoutException:
-        logger.error(f"Timeout on element based page source get for {objective}. Page source may be incomplete.")
-
-    page = driver.page_source
-    soup = BeautifulSoup(page, "html.parser")
-    a_tags = soup.find_all("a", href=True)
-    principle_links = [objective.join(link.attrs.get("href")) for link in a_tags if "principle" in link.get("href")]
-    principle_links.sort(key=lambda x: str(x.raw_path))
-    logger.info(f"Got CAF Objective Principle links: {principle_links}")
-    return principle_links
-
-
-class Principle(pydantic.BaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-
-    link: Annotated[
-        httpx.URL,
-        pydantic.PlainSerializer(lambda x: str(x), return_type=str),
-    ]
-
-    @pydantic.computed_field(alias="soup", repr=False)
-    @functools.cached_property
-    def _content(self) -> BeautifulSoup:
-        if httpx.get(self.link).status_code == HTTPStatus.NOT_FOUND:
-            logger.error(f"URL {self.link} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
-            return BeautifulSoup()
-
-        driver.get(str(self.link))
-        try:
-            selenium.webdriver.support.wait.WebDriverWait(driver, driver_get_timeout_duration).until(
-                selenium.webdriver.support.expected_conditions.presence_of_element_located(
-                    (selenium.webdriver.common.by.By.TAG_NAME, "table"),
-                ),
-            )
-        except selenium.common.exceptions.TimeoutException:
-            logger.error(f"Timeout on element based page source get for {self.link}. Page source may be incomplete.")
-
-        page = driver.page_source
-        soup = BeautifulSoup(page, "html.parser")
-        return soup
-
-    @pydantic.field_serializer("_content")
-    def serialize_content(self, _content: BeautifulSoup) -> str:
-        return "You can't serialize soup!"
+    content: Selector = pydantic.Field(exclude=True)
 
     @pydantic.computed_field()
     @functools.cached_property
     def heading(self) -> str:
-        tag = self._content.find("h2", attrs={"class": "subHeading"})
+        tag = self.content.find("h3")
         if tag is None:
-            logger.warning(f"Unable to determine heading for {self.link}")
-            return "error determining heading"
-        return tag.get_text(strip=True)
+            logger.warning("Unable to determine contributing outcome heading")
+            return "error determining contributing outcome heading"
+        return tag.get_all_text(strip=True)
 
     @pydantic.computed_field()
     @functools.cached_property
-    def principle(self) -> list[str]:
-        h2_tag = self._content.find("h2", string=re.compile(r"\s*Principle\s*"))
-        if h2_tag is None:
-            logger.warning(f"Unable to determine principle for {self.link}")
-            return ["error determining principle"]
+    def details(self) -> list[str]:
+        details_tags = self.content.below_elements.filter(lambda p: p.tag in ("p", "em"))
+        if not details_tags:
+            logger.warning("Unable to determine contributing outcome details")
+            return ["error determining contributing outcome details"]
 
-        h2_tag_parent = h2_tag.parent
-        if h2_tag_parent is None:
-            logger.warning(f"Unable to determine principle for {self.link}")
-            return ["error determining principle"]
+        return [details_tag.get_all_text(strip=True) for details_tag in details_tags]
 
-        p_tags = h2_tag_parent.find_all("p")
-        if not p_tags:
-            logger.warning(f"Unable to determine principle for {self.link}")
-            return ["error determining principle"]
-
-        return [p_tag.get_text(strip=True) for p_tag in p_tags]
+    class IGPCol(pydantic.BaseModel):
+        heading: str
+        subheading: str
+        controls: list[str]
 
     @pydantic.computed_field()
     @functools.cached_property
-    def description(self) -> list[str]:
-        h2_tag = self._content.find(
-            "h2",
-            string=re.compile(r"\s*Description\s*"),
-        )
-        if h2_tag is None:
-            logger.warning(f"Unable to determine description for {self.link}")
-            return ["error determining description"]
-
-        h2_tag_parent = h2_tag.parent
-        if h2_tag_parent is None:
-            logger.warning(f"Unable to determine description for {self.link}")
-            return ["error determining description"]
-
-        p_tags = h2_tag_parent.find_all("p")
-        if not p_tags:
-            logger.warning(f"Unable to determine description for {self.link}")
-            return ["error determining description"]
-
-        return [p_tag.get_text(strip=True) for p_tag in p_tags]
-
-    @pydantic.computed_field()
-    @functools.cached_property
-    def guidance(self) -> list[str]:
-        h2_tag = self._content.find("h2", string=re.compile(r"\s*Guidance\s*"))
-        if h2_tag is None:
-            logger.warning(f"Unable to determine guidance for {self.link}")
-            return ["error determining guidance"]
-
-        guidance_article_find_args = {"name": "div", "attrs": {"class": "pcf-article-content-item"}}
-        guidance_article = h2_tag.find_previous(**guidance_article_find_args)
-        if guidance_article is None:
-            logger.warning(f"Unable to determine guidance for {self.link}")
-            return ["error determining guidance"]
-
-        guidance_articles = [guidance_article]
-        next_guidance_article = guidance_article.find_next(**guidance_article_find_args)
-        while (next_guidance_article is not None) and (not next_guidance_article.find("table")):
-            guidance_articles.append(next_guidance_article)
-            next_guidance_article = next_guidance_article.find_next(**guidance_article_find_args)
-
-        p_tags = [guidance_article.find_all("p") for guidance_article in guidance_articles]  # type: ignore [union-attr]
-        p_tags = functools.reduce(operator.iconcat, p_tags, [])
-        if not p_tags:
-            logger.warning(f"Unable to determine guidance for {self.link}")
-            return ["error determining guidance"]
-
-        return list(filter(None, [p_tag.get_text(strip=True) for p_tag in p_tags]))  # type: ignore [union-attr]
-
-    @pydantic.computed_field()
-    @functools.cached_property
-    def pcfs(self) -> list[tuple[str, list[str], pd.DataFrame]]:
-        pcf_tags = self._content.find_all(
-            "div",
-            attrs={
-                "class": "pcf-BodyText",
-            },
-        )
-        filtered_pcf_tags = list(
-            filter(
-                lambda tag: tag.find(
-                    "table",
-                )
-                is not None,
-                pcf_tags[:],
-            ),
-        )
-
-        if not filtered_pcf_tags:
-            logger.warning(f"Unable to determine pcfs for {self.link}")
+    def igps(self) -> list[IGPCol]:
+        table_tag = self.content.find("table")
+        if table_tag is None:
+            logger.warning("Unable to determine contributing outcome IGP table")
             return []
 
-        pcfs = []
-        for pcf_tag in filtered_pcf_tags:
-            pcf_heading_tag = pcf_tag.find("h3")
-            if pcf_heading_tag is None:
-                logger.warning(f"Unable to determine guidance for {self.link}")
-                pcf_heading = "error determining pcf heading"
-            else:
-                pcf_heading = pcf_heading_tag.get_text(strip=True)
-
-            if (pcf_detail_tags := pcf_tag.find_all("em")) or (
-                (pcf_heading_tag is not None) and (pcf_detail_tags := pcf_heading_tag.find_next("p"))
-            ):
-                pcf_details = [pcf_detail_tag.get_text(strip=True) for pcf_detail_tag in pcf_detail_tags]
-            else:
-                logger.warning(f"Unable to determine pcf details for {self.link}")
-                pcf_details = ["error determining guidance"]
-
-            pcf_table_df = self.extract_pcf_table(pcf_tag.find("table"))
-            pcfs.append(
-                (pcf_heading, pcf_details, pcf_table_df),
-            )
-
-        return pcfs
-
-    def extract_pcf_table(self, table_tag: element.Tag) -> pd.DataFrame:
+        # the table is really three lists, as rows of controls have no relation
         tr_tags = table_tag.find_all("tr")
 
         # tables are currently presented with three rows
         # to somewhat future-proof, throw an exception if this changes
         expected_num_rows = 3
         if len(tr_tags) != expected_num_rows:
-            msg = "Extraction only support three row pcf tables."
+            msg = "Extraction only support three row igp tables."
             raise NotImplementedError(msg)
 
         # column headers
         # this is expected to be:
         #   'achieved' &
         #   'not achieved'
-        columns = [th_tag.get_text(strip=True) for th_tag in tr_tags[0].find_all("th")]
-
-        # 2D list/table
-        table: list[tuple[str, ...]] = []
+        headings = [th_tag.get_all_text(strip=True) for th_tag in tr_tags[0].find_all("th")]
 
         # column subheaders
         # this is expected to be:
         #   'At least one of the following statements is true' &
         #   'All the following statements are true'
-        table.append(tuple(td_tag.get_text(strip=True) for td_tag in tr_tags[1].find_all("td")))
+        subheadings = [td_tag.get_all_text(strip=True) for td_tag in tr_tags[1].find_all("td")]
 
         # controls of a single column are grouped in a single td tag, separated individually by p tags
         td_tags = tr_tags[-1].find_all("td")
-        p_texts = [[p_tag.get_text(strip=True) for p_tag in td_tag.find_all("p")] for td_tag in td_tags]
-        table.extend(itertools.zip_longest(*p_texts))
+        controls = [[str(p_tag.get_all_text(strip=True)) for p_tag in td_tag.find_all("p")] for td_tag in td_tags]
 
-        # convert to dataframe
-        df = pd.DataFrame(
-            table,
-            columns=columns,
-        )
-
-        return df
-
-    @pydantic.field_serializer("pcfs")
-    def serialize_pcfs(
-        self,
-        pcfs: list[tuple[str, list[str], pd.DataFrame]],
-    ) -> list[tuple[str, list[str], dict[Hashable, Any]]]:
-        return [(pcf[0], pcf[1], pcf[2].to_dict()) for pcf in pcfs]
+        return [
+            self.IGPCol(heading=heading, subheading=subheading, controls=controls)
+            for heading, subheading, controls in zip(headings, subheadings, controls, strict=True)
+        ]
 
 
-class Objective(pydantic.BaseModel):
-    class Config:
-        arbitrary_types_allowed = True
+class Principle(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
     link: Annotated[
-        httpx.URL,
-        pydantic.PlainSerializer(lambda x: str(x), return_type=str),
+        Annotated[str, "URL"],
+        pydantic.PlainSerializer(str, return_type=str),
     ]
 
-    @pydantic.computed_field(alias="soup", repr=False)
+    @pydantic.computed_field(alias="html_content", repr=False)
     @functools.cached_property
-    def _content(self) -> BeautifulSoup:
-        if httpx.get(self.link).status_code == HTTPStatus.NOT_FOUND:
+    def content(self) -> Selector:
+        page = StealthyFetcher.fetch(str(self.link), headless=True, network_idle=True)
+        if page.status == HTTPStatus.NOT_FOUND:
             logger.error(f"URL {self.link} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
-            return BeautifulSoup()
+            return Selector("")
+        return page
 
-        driver.get(str(self.link))
-        try:
-            selenium.webdriver.support.wait.WebDriverWait(driver, driver_get_timeout_duration).until(
-                selenium.webdriver.support.expected_conditions.presence_of_element_located(
-                    (selenium.webdriver.common.by.By.CLASS_NAME, "subHeading"),
-                ),
-            )
-        except selenium.common.exceptions.TimeoutException:
-            logger.error(f"Timeout on element based page source get for {self.link}. Page source may be incomplete.")
-
-        page = driver.page_source
-        soup = BeautifulSoup(page, "html.parser")
-        return soup
-
-    @pydantic.field_serializer("_content")
-    def serialize_content(self, _content: BeautifulSoup) -> str:
-        return "You can serialize soup!"
+    @pydantic.field_serializer("content")
+    def serialize_content(self, _: Selector) -> None:
+        """The content field is not serializable, so this serializer returns None to exclude it from the JSON output."""
 
     @pydantic.computed_field()
     @functools.cached_property
     def heading(self) -> str:
-        tag = self._content.find("h2", attrs={"class": "subHeading"})
+        tag = self.content.find("h2", {"class": "h1 mb-0"})
+        if tag is None:
+            logger.warning(f"Unable to determine heading for {self.link}")
+            return "error determining heading"
+        return tag.get_all_text(strip=True)
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def principle(self) -> list[str]:
+        principle_section = self.content.find(
+            "section",
+            lambda s: s.attrib.get("data-js-jumplinks-section-label", "").strip() == "Principle",
+        )
+        if principle_section is None:
+            logger.warning(f"Unable to determine principle for {self.link}")
+            return ["error determining principle"]
+
+        p_tags = principle_section.find_all("p")
+        if not p_tags:
+            logger.warning(f"Unable to find any paragraph tags in the Principle section for {self.link}")
+            return ["error determining principle"]
+
+        return [p_tag.get_all_text(strip=True) for p_tag in p_tags]
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def description(self) -> list[str]:
+        description_section = self.content.find(
+            "section",
+            lambda s: s.attrib.get("data-js-jumplinks-section-label", "").strip() == "Description",
+        )
+        if description_section is None:
+            logger.warning(f"Unable to determine description for {self.link}")
+            return ["error determining description"]
+
+        p_tags = description_section.find_all("p")
+        if not p_tags:
+            logger.warning(f"Unable to find any paragraph tags in the Description section for {self.link}")
+            return ["error determining description"]
+
+        return [p_tag.get_all_text(strip=True) for p_tag in p_tags]
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def guidance(self) -> list[str]:
+        guidance_section = self.content.find(
+            "section",
+            lambda s: s.attrib.get("data-js-jumplinks-section-label", "").strip() == "Guidance",
+        )
+        if guidance_section is None:
+            logger.warning(f"Unable to determine guidance for {self.link}")
+            return ["error determining guidance"]
+
+        guidance_articles = [guidance_section]
+
+        next_guidance_article = guidance_section.below_elements.search(
+            lambda p: p.tag == "li" and "flex" in p.attrib.get("class", "").split(),
+        )
+
+        while (next_guidance_article is not None) and (not next_guidance_article.find("table")):
+            guidance_articles.append(next_guidance_article)
+            next_guidance_article = next_guidance_article.below_elements.search(
+                lambda p: p.tag == "li" and "flex" in p.attrib.get("class", "").split(),
+            )
+
+        p_tags: list[Selector] = functools.reduce(
+            operator.iconcat,
+            [
+                guidance_article.find_all(
+                    "p",
+                )
+                for guidance_article in guidance_articles
+            ],
+            list[Selector](),
+        )
+        if not p_tags:
+            logger.warning(f"Unable to determine guidance for {self.link}")
+            return ["error determining guidance"]
+
+        return list(filter(None, [p_tag.get_all_text(strip=True) for p_tag in p_tags]))
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def contributing_outcomes(self) -> list[ContributingOutcome]:
+        # The contributing outcomes are presented in div tags with class "c-wysiwyg"
+        # Contributing outcomes are always accompanied with a indicator of good practice (IGP) table
+        # so this is used to for selection
+        tags: list[Selector] = self.content.find_all(
+            "div",
+            {
+                "class": "c-wysiwyg",
+            },
+        )
+        tags = list(
+            filter(
+                lambda tag: (
+                    tag.find(
+                        "table",
+                    )
+                    is not None
+                ),
+                tags[:],
+            ),
+        )
+
+        if not tags:
+            logger.warning(f"Unable to determine contributing outcomes for {self.link}")
+            return []
+
+        return [ContributingOutcome(content=tag) for tag in tags]
+
+
+class Objective(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    link: Annotated[
+        Annotated[str, "URL"],
+        pydantic.PlainSerializer(str, return_type=str),
+    ]
+
+    @pydantic.computed_field(alias="html_content", repr=False)
+    @functools.cached_property
+    def content(self) -> Selector:
+        page = StealthyFetcher.fetch(str(self.link), headless=True, network_idle=True)
+        if page.status == HTTPStatus.NOT_FOUND:
+            logger.error(f"URL {self.link} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
+            return Selector("")
+        return page
+
+    @pydantic.field_serializer("content")
+    def serialize_content(self, _: Selector) -> None:
+        """The content field is not serializable, so this serializer returns None to exclude it from the JSON output."""
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def heading(self) -> str:
+        tag = self.content.find("h2", {"class": "h1 mb-0"})
         if tag is None:
             logger.warning(f"Unable to determine heading for {self.link}")
             return "error determining heading"
@@ -338,42 +252,70 @@ class Objective(pydantic.BaseModel):
     @pydantic.computed_field()
     @functools.cached_property
     def principles(self) -> list[Principle]:
-        return [Principle(link=link) for link in get_caf_principle_links(self.link)]
+        logger.info(f"Getting CAF Objective Principle links from {self.link}")
+
+        page = StealthyFetcher.fetch(self.link, headless=True, network_idle=True)
+        if page.status == HTTPStatus.NOT_FOUND:
+            logger.error(f"URL {self.link} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
+            return []
+
+        a_tags: list[Selector] = page.css("a[href]")
+        principle_links: list[str] = [
+            tag.urljoin(tag.attrib.get("href")) for tag in a_tags if "principle" in tag.attrib.get("href")
+        ]
+        principle_links.sort()
+        logger.info(f"Got CAF Objective Principle links: {principle_links}")
+        return [Principle(link=link) for link in principle_links]
+
+
+class CAF(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    base: Annotated[str, "URL"] = pydantic.Field(
+        default="https://www.ncsc.gov.uk/collection/cyber-assessment-framework",
+    )
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def objectives(self) -> list[Objective]:
+        logger.info(f"Getting CAF Objective links from {self.base}")
+
+        page = StealthyFetcher.fetch(self.base, headless=True, network_idle=True)
+        if page.status == HTTPStatus.NOT_FOUND:
+            logger.error(f"URL {self.base} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
+            return []
+
+        a_tags: list[Selector] = page.css("a[href]")
+        links: list[str] = [tag.urljoin(tag.attrib.get("href")) for tag in a_tags]
+        objective_links: list[str] = list(
+            filter(lambda link: (link is not None) and ("objective" in link) and ("principle" not in link), links),
+        )
+        objective_links.sort()
+        logger.info(f"Got CAF Objective links: {objective_links}")
+        return [Objective(link=link) for link in objective_links]
 
 
 def main(output_json_file: Path) -> None:
-    ncsc_caf_homepage_link = httpx.URL(
-        "https://www.ncsc.gov.uk/collection/cyber-assessment-framework",
-    )
-    logger.info(f"Reading: {ncsc_caf_homepage_link}")
-    ncsc_caf_objectives_links: list[httpx.URL] = get_caf_objective_links(
-        ncsc_caf_homepage_link,
-    )
 
-    objectives: list[Objective] = []
-    for objective_link in ncsc_caf_objectives_links:
-        objective = Objective(link=objective_link)
-        objectives.append(objective)
+    ncsc_caf_homepage_link: Annotated[str, "URL"] = "https://www.ncsc.gov.uk/collection/cyber-assessment-framework"
+    logger.info(f"Reading: {ncsc_caf_homepage_link}")
+
+    caf = CAF(base=ncsc_caf_homepage_link)
+
+    character_replacements = {
+        r"\u202f": " ",  # narror space -> regular space
+        r"\u2019": "'",  # right single quotation mark -> apostrophe
+        r"\n": " ",  # literal newlines -> regular space
+    }
+    character_replacements = {re.escape(k): v for k, v in character_replacements.items()}
+    pattern = re.compile("|".join(character_replacements.keys()))
 
     with Path.open(output_json_file, "w", encoding="utf-8") as fd:
-        # This is preferred over model_dump_json() as it allows for the output str to be formatted for readability,
-        # while still allowing pydantic to do the serialisation
-        objective_models = [objective.model_dump() for objective in objectives]
-        opts = jsbeautifier.default_options()
-        opts.indent_size = 2
-        opts.space_in_empty_paren = True
-        objectives_json: str = jsbeautifier.beautify(
-            json.dumps(objective_models),
-            opts,
-        )
-        unicode_replacements = {
-            r"\u202f": " ",  # narror space -> regular space
-            r"\u2019": "'",  # right single quotation mark -> apostrophe
-        }
-        unicode_replacements = {re.escape(k): v for k, v in unicode_replacements.items()}
-        pattern = re.compile("|".join(unicode_replacements.keys()))
-        objectives_json = pattern.sub(lambda m: unicode_replacements[re.escape(m.group(0))], objectives_json)
-        fd.write(objectives_json)
+        json = caf.model_dump_json(indent=2)
+        json = pattern.sub(lambda m: character_replacements[re.escape(m.group(0))], json)
+        fd.write(json)
+
+    logger.info(f"Completed scraping: see {output_json_file} and {output_json_file.with_suffix('.log')}")
 
 
 if __name__ == "__main__":
@@ -391,20 +333,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         logger.add(Path(args.output + ".log"))
-        options = selenium.webdriver.firefox.options.Options()
-        options.binary_location = r"/usr/bin/firefox-esr"
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")  # required for M1 Macs
-        service = selenium.webdriver.firefox.service.Service(
-            executable_path="/usr/local/bin/geckodriver",
-        )
-        logger.info("Opening Webdriver session")
-        driver = selenium.webdriver.Firefox(options=options, service=service)
-        driver.implicitly_wait(10.0)
         main(Path(args.output + ".json"))
     except Exception as exc:
         logger.error(exc)
         raise
-    finally:
-        logger.info("Closing Webdriver session")
-        driver.close()
