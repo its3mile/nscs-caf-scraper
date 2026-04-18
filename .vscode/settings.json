@@ -1,5 +1,5 @@
 {
-    "editor.formatOnSave": true,
+    "editor.formatOnSave": false,
     "html.format.wrapLineLength": 0,
     "editor.defaultFormatter": "charliermarsh.ruff",
     "[json]": {
