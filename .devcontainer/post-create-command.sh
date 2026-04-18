@@ -14,4 +14,4 @@ uv sync
 # Install Git pre-commit hooks
 echo "Installing Git pre-commit hooks."
 uv tool install pre-commit
-pre-commit install
+uv tool run pre-commit install
