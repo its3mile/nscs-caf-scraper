@@ -24,13 +24,14 @@ jobs:
         with:
           push: false
           tags: ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest
-      
+          build-args: 
+            APP_DIR=${{ env.APP_DIR }}
+
       - name: Run Web Scraper Container
         run: | 
             docker run \
             --name ${{ env.WEB_SCRAPER_NAME }} \
-            ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest \ 
-            --build-arg APP_DIR=${{ env.APP_DIR }}
+            ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest
             
       - name: Extract Web Scraper Output Files
         run: |
