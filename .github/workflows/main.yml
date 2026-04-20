@@ -13,47 +13,51 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4.2.2
-      
-    - name: Dev Container Build and Run
-      uses: devcontainers/ci@v0.3
-      with:
-        imageName: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
-        cacheFrom: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
-        push: never
-        runCmd: 
-            .venv/bin/python main.py
+      # build container image
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          push: false
+          tags: its3mile/ncsc-caf-scraper:latest
+
+      # run container image
+      - run: | 
+            docker run \
+            --name ncsc-caf-scraper \
+            its3mile/ncsc-caf-scraper:latest
             
-    - run: '[ -f output.json ]' 
-    - run: '[ -f output.log ]' 
-    
-    - run: |
-        DATETIME=$(date +"%FT%H%M%S")
-        OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
-        mv output.json $OUTPUT_JSON
-        echo "OUTPUT_JSON=$OUTPUT_JSON" >> $GITHUB_OUTPUT
-        OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
-        mv output.log $OUTPUT_LOG
-        echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
-      id: set_outputs
+      # copy expected output files from container to host
+      - run: docker cp ncsc-caf-scraper:/app/output.json output.json
+      - run: docker cp ncsc-caf-scraper:/app/output.log output.log
+      
+      # upload expected output files as artifacts
+      - run: |
+          DATETIME=$(date +"%FT%H%M%S")
+          OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
+          mv output.json $OUTPUT_JSON
+          echo "OUTPUT_JSON=$OUTPUT_JSON" >> $GITHUB_OUTPUT
+          OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
+          mv output.log $OUTPUT_LOG
+          echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
+        id: set_outputs
 
-    - name: Upload Json
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.set_outputs.outputs.output_json }}
-        path: ${{ steps.set_outputs.outputs.output_json }}
+      - name: Upload Json
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.set_outputs.outputs.output_json }}
+          path: ${{ steps.set_outputs.outputs.output_json }}
         
-    - name: Upload Log
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.set_outputs.outputs.output_log }}
-        path: ${{ steps.set_outputs.outputs.output_log }}
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
-        files: |
-          ${{ steps.set_outputs.outputs.output_json }}
-          ${{ steps.set_outputs.outputs.output_log }}
+      - name: Upload Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.set_outputs.outputs.output_log }}
+          path: ${{ steps.set_outputs.outputs.output_log }}
+      
+      # create a release and attach the expected output files as assets
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
+          files: |
+            ${{ steps.set_outputs.outputs.output_json }}
+            ${{ steps.set_outputs.outputs.output_log }}
