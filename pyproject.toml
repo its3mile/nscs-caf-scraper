@@ -6,7 +6,7 @@ authors = ["Daintta Ltd", "Emile Boutany <emile.boutany@daintta.com>"]
 readme = "README.md"
 package-mode = false
 
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "loguru>=0.7.3",
     "pydantic>=2.12.5",
@@ -23,13 +23,13 @@ addopts = "-ra -q -v --cov=. --cov-report html"
 exclude = [
     "__pycache__",
 ]
-target-version = "py312"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]
 select = ["ALL"]
 extend-select = ["I"]
-ignore = ["B008", "E203", "E266", "E501", "PD901", "D", "RET504"]
+ignore = ["B008", "E203", "E266", "E501", "D", "RET504", "COM812"]
 
 [dependency-groups]
 dev = [

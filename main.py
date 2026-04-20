@@ -6,7 +6,7 @@ import operator
 import re
 from http import HTTPStatus
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import pydantic
 from loguru import logger
@@ -36,12 +36,26 @@ class ContributingOutcome(pydantic.BaseModel):
             logger.warning("Unable to determine contributing outcome details")
             return ["error determining contributing outcome details"]
 
-        return [details_tag.get_all_text(strip=True) for details_tag in details_tags]
+        return list(filter(None, [details_tag.get_all_text(strip=True) for details_tag in details_tags]))
 
     class IGPCol(pydantic.BaseModel):
         heading: str
         subheading: str
         controls: list[str]
+
+        @pydantic.model_serializer(mode="wrap")
+        def serialize_md(self, handler, info) -> Any:  # type: ignore[no-untyped-def] # noqa: ANN001, ANN401
+            # Check if 'format' is set to 'md' in the context
+            if info.context and info.context.get("format") == "md":
+                controls_md = "\n".join([f"- {x}" for x in self.controls])
+                return f"""
+{self.heading} - _{self.subheading}_
+
+{controls_md}
+
+"""
+            # Fallback to standard behavior (dict or JSON)
+            return handler(self)
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -75,21 +89,36 @@ class ContributingOutcome(pydantic.BaseModel):
 
         # controls of a single column are grouped in a single td tag, separated individually by p tags
         td_tags = tr_tags[-1].find_all("td")
-        controls = [[str(p_tag.get_all_text(strip=True)) for p_tag in td_tag.find_all("p")] for td_tag in td_tags]
+        controls = [
+            list(filter(None, [str(p_tag.get_all_text(strip=True)) for p_tag in td_tag.find_all("p")]))
+            for td_tag in td_tags
+        ]
 
         return [
             self.IGPCol(heading=heading, subheading=subheading, controls=controls)
             for heading, subheading, controls in zip(headings, subheadings, controls, strict=True)
         ]
 
+    @pydantic.model_serializer(mode="wrap")
+    def serialize_md(self, handler, info) -> Any:  # type: ignore[no-untyped-def] # noqa: ANN001, ANN401
+        # Check if 'format' is set to 'md' in the context
+        if info.context and info.context.get("format") == "md":
+            igps_md = "\n".join([str(x.model_dump(context=info.context)) for x in self.igps])
+            return f"""
+__{self.heading}__
+{"\n".join([f"- {detail}" for detail in self.details])}
+
+{igps_md}
+
+"""
+        # Fallback to standard behavior (dict or JSON)
+        return handler(self)
+
 
 class Principle(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
-    link: Annotated[
-        Annotated[str, "URL"],
-        pydantic.PlainSerializer(str, return_type=str),
-    ]
+    link: Annotated[str, "URL"]
 
     @pydantic.computed_field(alias="html_content", repr=False)
     @functools.cached_property
@@ -129,7 +158,7 @@ class Principle(pydantic.BaseModel):
             logger.warning(f"Unable to find any paragraph tags in the Principle section for {self.link}")
             return ["error determining principle"]
 
-        return [p_tag.get_all_text(strip=True) for p_tag in p_tags]
+        return list(filter(None, [p_tag.get_all_text(strip=True) for p_tag in p_tags]))
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -147,7 +176,7 @@ class Principle(pydantic.BaseModel):
             logger.warning(f"Unable to find any paragraph tags in the Description section for {self.link}")
             return ["error determining description"]
 
-        return [p_tag.get_all_text(strip=True) for p_tag in p_tags]
+        return list(filter(None, [p_tag.get_all_text(strip=True) for p_tag in p_tags]))
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -218,14 +247,40 @@ class Principle(pydantic.BaseModel):
 
         return [ContributingOutcome(content=tag) for tag in tags]
 
+    @pydantic.model_serializer(mode="wrap")
+    def serialize_md(self, handler, info) -> Any:  # type: ignore[no-untyped-def] # noqa: ANN001, ANN401
+        # Check if 'format' is set to 'md' in the context
+        if info.context and info.context.get("format") == "md":
+            base_indentation = 5
+            contributing_outcomes_md = "\n\n".join(
+                [str(x.model_dump(context=info.context)) for x in self.contributing_outcomes],
+            )
+            return f"""
+{base_indentation * "#"} [{self.heading}]({self.link})
+
+{"\n\n".join(self.principle)}
+
+{(base_indentation + 1) * "#"} Description
+
+{"\n\n".join(self.description)}
+
+{(base_indentation + 1) * "#"} Guidance
+
+{"\n\n".join(self.guidance)}
+
+{(base_indentation + 1) * "#"} Contributing Outcomes
+
+{contributing_outcomes_md}
+
+"""
+        # Fallback to standard behavior (dict or JSON)
+        return handler(self)
+
 
 class Objective(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
-    link: Annotated[
-        Annotated[str, "URL"],
-        pydantic.PlainSerializer(str, return_type=str),
-    ]
+    link: Annotated[str, "URL"]
 
     @pydantic.computed_field(alias="html_content", repr=False)
     @functools.cached_property
@@ -247,7 +302,7 @@ class Objective(pydantic.BaseModel):
         if tag is None:
             logger.warning(f"Unable to determine heading for {self.link}")
             return "error determining heading"
-        return tag.text
+        return tag.get_all_text(strip=True)
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -266,6 +321,24 @@ class Objective(pydantic.BaseModel):
         principle_links.sort()
         logger.info(f"Got CAF Objective Principle links: {principle_links}")
         return [Principle(link=link) for link in principle_links]
+
+    @pydantic.model_serializer(mode="wrap")
+    def serialize_md(self, handler, info) -> Any:  # type: ignore[no-untyped-def] # noqa: ANN001, ANN401
+        # Check if 'format' is set to 'md' in the context
+        if info.context and info.context.get("format") == "md":
+            base_indentation = 3
+            principles_md = "\n\n".join([str(x.model_dump(context=info.context)) for x in self.principles])
+            return f"""
+{base_indentation * "#"} [{self.heading}]({self.link})
+
+{(base_indentation + 1) * "#"} Principles
+
+{principles_md}
+
+"""
+
+        # Fallback to standard behavior (dict or JSON)
+        return handler(self)
 
 
 class CAF(pydantic.BaseModel):
@@ -294,8 +367,26 @@ class CAF(pydantic.BaseModel):
         logger.info(f"Got CAF Objective links: {objective_links}")
         return [Objective(link=link) for link in objective_links]
 
+    @pydantic.model_serializer(mode="wrap")
+    def serialize_md(self, handler, info) -> Any:  # type: ignore[no-untyped-def] # noqa: ANN001, ANN401
+        # Check if 'format' is set to 'md' in the context
+        if info.context and info.context.get("format") == "md":
+            base_indentation = 1
+            objectives_md = "\n\n".join(str(x.model_dump(context=info.context)) for x in self.objectives)
+            return f"""
+{base_indentation * "#"} [NCSC CAF]({self.base})
 
-def main(output_json_file: Path) -> None:
+{(base_indentation + 1) * "#"} Objectives
+
+{objectives_md}
+
+"""
+
+        # Fallback to standard behavior (dict or JSON)
+        return handler(self)
+
+
+def main(output_filename_stem: Path) -> None:
 
     ncsc_caf_homepage_link: Annotated[str, "URL"] = "https://www.ncsc.gov.uk/collection/cyber-assessment-framework"
     logger.info(f"Reading: {ncsc_caf_homepage_link}")
@@ -310,12 +401,18 @@ def main(output_json_file: Path) -> None:
     character_replacements = {re.escape(k): v for k, v in character_replacements.items()}
     pattern = re.compile("|".join(character_replacements.keys()))
 
-    with Path.open(output_json_file, "w", encoding="utf-8") as fd:
+    with Path.open(output_filename_stem.with_suffix(".json"), "w", encoding="utf-8") as fd:
         json = caf.model_dump_json(indent=2)
         json = pattern.sub(lambda m: character_replacements[re.escape(m.group(0))], json)
         fd.write(json)
 
-    logger.info(f"Completed scraping: see {output_json_file} and {output_json_file.with_suffix('.log')}")
+    with Path.open(output_filename_stem.with_suffix(".md"), "w", encoding="utf-8") as fd:
+        md = str(caf.model_dump(context={"format": "md"}))
+        fd.write(md)
+
+    logger.info(
+        f"Completed scraping: see {output_filename_stem.with_suffix('.json')}, {output_filename_stem.with_suffix('.md')}, and {output_filename_stem.with_suffix('.log')}",
+    )
 
 
 if __name__ == "__main__":
@@ -326,14 +423,14 @@ if __name__ == "__main__":
         "-o",
         "--output",
         help="""The output file name without an extension (stem).
-                        This is used to produce an <output>.json and an <output>.log.
+                        This is used to produce an <output>.json, <output>.md, and an <output>.log.
                         Defaults to 'output'.""",
         default="output",
     )
     args = parser.parse_args()
     try:
         logger.add(Path(args.output + ".log"))
-        main(Path(args.output + ".json"))
+        main(Path(args.output))
     except Exception as exc:
         logger.error(exc)
         raise

@@ -163,3 +163,4 @@ cython_debug/
 
 # Exclude output
 output.json
+output.md
