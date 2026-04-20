@@ -37,6 +37,8 @@ jobs:
         run: |
           docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.json NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json
           docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.log NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log
+          echo "OUTPUT_JSON=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json" >> $GITHUB_OUTPUT
+          echo "OUTPUT_LOG=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log" >> $GITHUB_OUTPUT
         id: extract_outputs
 
       - name: Upload Web Scraper Output Json
