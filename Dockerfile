@@ -11,11 +11,12 @@ RUN sh /uv-installer.sh && rm /uv-installer.sh
 
 ENV PATH="/root/.local/bin/:$PATH"
 
-COPY . /app
+ARG APP_DIR=/app
+COPY . $APP_DIR
 
 ENV UV_NO_DEV=1
 
-WORKDIR /app
+WORKDIR $APP_DIR
 
 RUN uv sync --locked
 

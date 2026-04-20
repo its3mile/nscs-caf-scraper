@@ -7,57 +7,53 @@ on:
   push:
     branches: [ "main", "feat/github-actions" ]
 
+
+env:
+  APP_DIR: /app
+  RELEASE_TAG_SLUG: ${{ github.run_id }}_${{ github.run_attempt }}
+  WEB_SCRAPER_NAME: ncsc-caf-scraper
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # build container image
-      - name: Build
+      - name: Web Scraper Container Image Build
         uses: docker/build-push-action@v7
         with:
           push: false
-          tags: its3mile/ncsc-caf-scraper:latest
-
-      # run container image
-      - run: | 
+          tags: ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest
+      
+      - name: Run Web Scraper Container
+        run: | 
             docker run \
-            --name ncsc-caf-scraper \
-            its3mile/ncsc-caf-scraper:latest
+            --name ${{ env.WEB_SCRAPER_NAME }} \
+            ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest \ 
+            --build-arg APP_DIR=${{ env.APP_DIR }}
             
-      # copy expected output files from container to host
-      - run: docker cp ncsc-caf-scraper:/app/output.json output.json
-      - run: docker cp ncsc-caf-scraper:/app/output.log output.log
-      
-      # upload expected output files as artifacts
-      - run: |
-          DATETIME=$(date +"%FT%H%M%S")
-          OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
-          mv output.json $OUTPUT_JSON
-          echo "OUTPUT_JSON=$OUTPUT_JSON" >> $GITHUB_OUTPUT
-          OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
-          mv output.log $OUTPUT_LOG
-          echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
-        id: set_outputs
+      - name: Extract Web Scraper Output Files
+        run: |
+          docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.json NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json
+          docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.log NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log
+        id: extract_outputs
 
-      - name: Upload Json
+      - name: Upload Web Scraper Output Json
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.set_outputs.outputs.output_json }}
-          path: ${{ steps.set_outputs.outputs.output_json }}
+          name: ${{ steps.extract_outputs.outputs.output_json }}
+          path: ${{ steps.extract_outputs.outputs.output_json }}
         
-      - name: Upload Log
+      - name: Upload Web Scraper Output Log
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.set_outputs.outputs.output_log }}
-          path: ${{ steps.set_outputs.outputs.output_log }}
+          name: ${{ steps.extract_outputs.outputs.output_log }}
+          path: ${{ steps.extract_outputs.outputs.output_log }}
       
-      # create a release and attach the expected output files as assets
-      - name: Create Release
+      - name: Create Release With Artefacts
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
+          tag_name: ${{ env.RELEASE_TAG_SLUG }}
           files: |
-            ${{ steps.set_outputs.outputs.output_json }}
-            ${{ steps.set_outputs.outputs.output_log }}
+            ${{ steps.extract_outputs.outputs.output_json }}
+            ${{ steps.extract_outputs.outputs.output_log }}
