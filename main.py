@@ -348,17 +348,84 @@ class CAF(pydantic.BaseModel):
         default="https://www.ncsc.gov.uk/collection/cyber-assessment-framework",
     )
 
+    @pydantic.computed_field(alias="html_content", repr=False)
+    @functools.cached_property
+    def content(self) -> Selector:
+        page = StealthyFetcher.fetch(str(self.base), headless=True, network_idle=True)
+        if page.status == HTTPStatus.NOT_FOUND:
+            logger.error(f"URL {self.base} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
+            return Selector("")
+        return page
+
+    @pydantic.field_serializer("content")
+    def serialize_content(self, _: Selector) -> None:
+        """The content field is not serializable, so this serializer returns None to exclude it from the JSON output."""
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def version(self) -> str:
+        sidebar_tag = self.content.css("div[class=c-layout-sidebar-bottom]")
+
+        if sidebar_tag is None or sidebar_tag.first is None:
+            logger.warning("Unable to determine CAF version")
+            return "error determining CAF version"
+
+        version_heading_tag = sidebar_tag.first.find("h4", lambda h: h.get_all_text(strip=True) == "Version")
+        if version_heading_tag is None or version_heading_tag.parent is None:
+            logger.warning("Unable to determine CAF version")
+            return "error determining CAF version"
+
+        # version number is the text of the parent div
+        # as it doesn't have it's own tag, extract all test, and get the final one (expected to be the version number)
+        return version_heading_tag.parent.css("::text").getall()[-1]
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def published(self) -> str:
+        sidebar_tag = self.content.css("div[class=c-layout-sidebar-bottom]")
+
+        if sidebar_tag is None or sidebar_tag.first is None:
+            logger.warning("Unable to determine CAF Published Date")
+            return "error determining CAF published date"
+
+        published_heading_tag = sidebar_tag.first.find("h4", lambda h: h.get_all_text(strip=True) == "Published")
+        if published_heading_tag is None or published_heading_tag.parent is None:
+            logger.warning("Unable to determine CAF published date")
+            return "error determining CAF published date"
+
+        published_time_tag = published_heading_tag.parent.find("time")
+        if published_time_tag is None:
+            logger.warning("Unable to determine CAF published date")
+            return "error determining CAF published date"
+
+        return published_time_tag.get_all_text(strip=True)
+
+    @pydantic.computed_field()
+    @functools.cached_property
+    def reviewed(self) -> str:
+        sidebar_tag = self.content.css("div[class=c-layout-sidebar-bottom]")
+
+        if sidebar_tag is None or sidebar_tag.first is None:
+            logger.warning("Unable to determine CAF Published Date")
+            return "error determining CAF published date"
+
+        reviewed_heading_tag = sidebar_tag.first.find("h4", lambda h: h.get_all_text(strip=True) == "Reviewed")
+        if reviewed_heading_tag is None or reviewed_heading_tag.parent is None:
+            logger.warning("Unable to determine CAF reviewed date")
+            return "error determining CAF reviewed date"
+
+        reviewed_time_tag = reviewed_heading_tag.parent.find("time")
+        if reviewed_time_tag is None:
+            logger.warning("Unable to determine CAF reviewed date")
+            return "error determining CAF reviewed date"
+
+        return reviewed_time_tag.get_all_text(strip=True)
+
     @pydantic.computed_field()
     @functools.cached_property
     def objectives(self) -> list[Objective]:
         logger.info(f"Getting CAF Objective links from {self.base}")
-
-        page = StealthyFetcher.fetch(self.base, headless=True, network_idle=True)
-        if page.status == HTTPStatus.NOT_FOUND:
-            logger.error(f"URL {self.base} returned a HTTPStatus.NOT_FOUND response code, so will not be parsed.")
-            return []
-
-        a_tags: list[Selector] = page.css("a[href]")
+        a_tags: list[Selector] = self.content.css("a[href]")
         links: list[str] = [tag.urljoin(tag.attrib.get("href")) for tag in a_tags]
         objective_links: list[str] = list(
             filter(lambda link: (link is not None) and ("objective" in link) and ("principle" not in link), links),
@@ -375,6 +442,12 @@ class CAF(pydantic.BaseModel):
             objectives_md = "\n\n".join(str(x.model_dump(context=info.context)) for x in self.objectives)
             return f"""
 {base_indentation * "#"} [NCSC CAF]({self.base})
+
+Version: {self.version}
+
+Published: {self.published}
+
+Reviewed: {self.reviewed}
 
 {(base_indentation + 1) * "#"} Objectives
 
