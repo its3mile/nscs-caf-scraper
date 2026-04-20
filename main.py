@@ -444,7 +444,9 @@ class CAF(pydantic.BaseModel):
 {base_indentation * "#"} [NCSC CAF]({self.base})
 
 Version: {self.version}
+
 Published: {self.published}
+
 Reviewed: {self.reviewed}
 
 {(base_indentation + 1) * "#"} Objectives
