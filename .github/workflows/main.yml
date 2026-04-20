@@ -40,6 +40,13 @@ jobs:
           echo "OUTPUT_JSON=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json" >> $GITHUB_OUTPUT
           echo "OUTPUT_LOG=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log" >> $GITHUB_OUTPUT
         id: extract_outputs
+      
+      - name: Check Web Scraper Output Log For Errors
+        run: |
+          if grep -q "ERROR" "${{ steps.extract_outputs.outputs.output_log }}"; then
+            echo "Web scraper encountered an error. Check the log for details."
+            exit 1
+          fi
 
       - name: Upload Web Scraper Output Json
         uses: actions/upload-artifact@v4
