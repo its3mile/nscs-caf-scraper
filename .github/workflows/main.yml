@@ -7,53 +7,63 @@ on:
   push:
     branches: [ "main", "feat/github-actions" ]
 
+
+env:
+  APP_DIR: /app
+  RELEASE_TAG_SLUG: ${{ github.run_id }}_${{ github.run_attempt }}
+  WEB_SCRAPER_NAME: ncsc-caf-scraper
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4.2.2
-      
-    - name: Dev Container Build and Run
-      uses: devcontainers/ci@v0.3
-      with:
-        imageName: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
-        cacheFrom: ghcr.io/its3mile/ncsc-caf-scraper-devcontainer
-        push: never
-        runCmd: 
-            .venv/bin/python main.py
+      - name: Web Scraper Container Image Build
+        uses: docker/build-push-action@v7
+        with:
+          push: false
+          tags: ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest
+          build-args: 
+            APP_DIR=${{ env.APP_DIR }}
+
+      - name: Run Web Scraper Container
+        run: | 
+            docker run \
+            --name ${{ env.WEB_SCRAPER_NAME }} \
+            ${{ github.actor }}/${{ env.WEB_SCRAPER_NAME }}:latest
             
-    - run: '[ -f output.json ]' 
-    - run: '[ -f output.log ]' 
-    
-    - run: |
-        DATETIME=$(date +"%FT%H%M%S")
-        OUTPUT_JSON="NCSC-CAF-${DATETIME}.json"
-        mv output.json $OUTPUT_JSON
-        echo "OUTPUT_JSON=$OUTPUT_JSON" >> $GITHUB_OUTPUT
-        OUTPUT_LOG="NCSC-CAF-${DATETIME}.log"
-        mv output.log $OUTPUT_LOG
-        echo "OUTPUT_LOG=$OUTPUT_LOG" >> $GITHUB_OUTPUT
-      id: set_outputs
+      - name: Extract Web Scraper Output Files
+        run: |
+          docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.json NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json
+          docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.log NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log
+          echo "OUTPUT_JSON=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json" >> $GITHUB_OUTPUT
+          echo "OUTPUT_LOG=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log" >> $GITHUB_OUTPUT
+        id: extract_outputs
+      
+      - name: Check Web Scraper Output Log For Errors
+        run: |
+          if grep -q "ERROR" "${{ steps.extract_outputs.outputs.output_log }}"; then
+            echo "Web scraper encountered an error. Check the log for details."
+            exit 1
+          fi
 
-    - name: Upload Json
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.set_outputs.outputs.output_json }}
-        path: ${{ steps.set_outputs.outputs.output_json }}
+      - name: Upload Web Scraper Output Json
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.extract_outputs.outputs.output_json }}
+          path: ${{ steps.extract_outputs.outputs.output_json }}
         
-    - name: Upload Log
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.set_outputs.outputs.output_log }}
-        path: ${{ steps.set_outputs.outputs.output_log }}
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.run_id }}_${{ github.run_attempt }}
-        files: |
-          ${{ steps.set_outputs.outputs.output_json }}
-          ${{ steps.set_outputs.outputs.output_log }}
+      - name: Upload Web Scraper Output Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.extract_outputs.outputs.output_log }}
+          path: ${{ steps.extract_outputs.outputs.output_log }}
+      
+      - name: Create Release With Artefacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG_SLUG }}
+          files: |
+            ${{ steps.extract_outputs.outputs.output_json }}
+            ${{ steps.extract_outputs.outputs.output_log }}
