@@ -36,8 +36,10 @@ jobs:
       - name: Extract Web Scraper Output Files
         run: |
           docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.json NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json
+          docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.md NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.md
           docker cp ${{ env.WEB_SCRAPER_NAME }}:${{ env.APP_DIR }}/output.log NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log
           echo "OUTPUT_JSON=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.json" >> $GITHUB_OUTPUT
+          echo "OUTPUT_MD=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.md" >> $GITHUB_OUTPUT
           echo "OUTPUT_LOG=NCSC-CAF-${{ env.RELEASE_TAG_SLUG }}.log" >> $GITHUB_OUTPUT
         id: extract_outputs
       
@@ -53,6 +55,12 @@ jobs:
         with:
           name: ${{ steps.extract_outputs.outputs.output_json }}
           path: ${{ steps.extract_outputs.outputs.output_json }}
+
+      - name: Upload Web Scraper Output Markdown
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.extract_outputs.outputs.output_md }}
+          path: ${{ steps.extract_outputs.outputs.output_md }}
         
       - name: Upload Web Scraper Output Log
         uses: actions/upload-artifact@v4
@@ -66,4 +74,5 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG_SLUG }}
           files: |
             ${{ steps.extract_outputs.outputs.output_json }}
+            ${{ steps.extract_outputs.outputs.output_md }}
             ${{ steps.extract_outputs.outputs.output_log }}

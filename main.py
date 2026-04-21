@@ -377,7 +377,7 @@ class CAF(pydantic.BaseModel):
 
         # version number is the text of the parent div
         # as it doesn't have it's own tag, extract all test, and get the final one (expected to be the version number)
-        return version_heading_tag.parent.css("::text").getall()[-1]
+        return version_heading_tag.parent.css("::text").getall()[-1].strip()
 
     @pydantic.computed_field()
     @functools.cached_property
@@ -490,7 +490,7 @@ def main(output_filename_stem: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Scrape the NCSC CAF site, and extract the relevant information, presenting it as a structured JSON document.",
+        description="Scrape the NCSC CAF site, and extract the relevant information, presenting it as a structured document.",
     )
     parser.add_argument(
         "-o",
