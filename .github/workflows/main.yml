@@ -143,7 +143,7 @@ jobs:
           EOF
           
           # Inject your standalone markdown file directly into the pre block
-          cat report.md >> dist/index.html
+          cat ${{ steps.extract_outputs.outputs.output_md }} >> dist/index.html
           
           # Close the HTML tags
           cat << 'EOF' >> dist/index.html
