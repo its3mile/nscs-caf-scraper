@@ -12,6 +12,7 @@ env:
   APP_DIR: /app
   RELEASE_TAG_SLUG: ${{ github.run_id }}_${{ github.run_attempt }}
   WEB_SCRAPER_NAME: ncsc-caf-scraper
+  LATEST_RELEASE_WORK_DIR: latest-release
 
 jobs:
   build:
@@ -50,26 +51,51 @@ jobs:
             exit 1
           fi
 
+      - name: release-downloader
+        uses: robinraju/release-downloader@v1.13
+        with:
+          latest: true
+          fileName: '*'
+          out-file-path: ${{env.LATEST_RELEASE_WORK_DIR}}
+          
+      - name: Compare Web Scraper Output to Latest Release
+        id: check_changes
+        run: |
+          diff ${{ steps.extract_outputs.outputs.output_json }} ${{ env.LATEST_RELEASE_WORK_DIR }}/*.json && status=$? || status=$?
+          if [ $status -eq 0 ]; then
+            echo "This run webscraper output is identical to the latest release."
+            echo "New release will not be published."
+            echo "publish=false" >> $GITHUB_OUTPUT # <-- Set output to false
+          else
+            echo "This run webscraper output differs from latest release."
+            echo "A new release will be published."
+            echo "publish=true" >> $GITHUB_OUTPUT  # <-- Set output to true
+          fi
+  
       - name: Upload Web Scraper Output Json
         uses: actions/upload-artifact@v4
+        if: steps.check_changes.outputs.publish == 'true'
         with:
           name: ${{ steps.extract_outputs.outputs.output_json }}
           path: ${{ steps.extract_outputs.outputs.output_json }}
 
       - name: Upload Web Scraper Output Markdown
         uses: actions/upload-artifact@v4
+        if: steps.check_changes.outputs.publish == 'true'
         with:
           name: ${{ steps.extract_outputs.outputs.output_md }}
           path: ${{ steps.extract_outputs.outputs.output_md }}
         
       - name: Upload Web Scraper Output Log
         uses: actions/upload-artifact@v4
+        if: steps.check_changes.outputs.publish == 'true'
         with:
           name: ${{ steps.extract_outputs.outputs.output_log }}
           path: ${{ steps.extract_outputs.outputs.output_log }}
       
       - name: Create Release With Artefacts
         uses: softprops/action-gh-release@v2
+        if: steps.check_changes.outputs.publish == 'true'
         with:
           tag_name: ${{ env.RELEASE_TAG_SLUG }}
           files: |
