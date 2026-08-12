@@ -53,6 +53,13 @@ jobs:
             exit 1
           fi
 
+      - name: Check Web Scraper Output Log For Warnings
+        run: |
+          if grep -q "WARNING" "${{ steps.extract_outputs.outputs.output_log }}"; then
+            echo "Web scraper encountered an warning. This is typical for when the scraper fails to locate an element to extact. Check the log for details."
+            exit 1
+          fi
+
       - name: release-downloader
         uses: robinraju/release-downloader@v1.13
         with:
