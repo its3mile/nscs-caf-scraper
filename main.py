@@ -165,7 +165,7 @@ class Principle(pydantic.BaseModel):
     def description(self) -> list[str]:
         description_section = self.content.find(
             "section",
-            lambda s: s.attrib.get("data-js-jumplinks-section-label", "").strip() == "Description",
+            lambda s: s.attrib.get("data-js-jumplinks-section-label", "").startswith("Description"),
         )
         if description_section is None:
             logger.warning(f"Unable to determine description for {self.link}")
